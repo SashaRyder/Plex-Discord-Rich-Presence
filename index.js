@@ -7,6 +7,8 @@ class DiscordRichPresence {
 
   plexClient = null;
   discordClient = null;
+  pausedSince = null;
+  oldState = "";
 
   constructor() {
     this.discordClient = new Client({ transport: 'ipc' });
@@ -45,21 +47,31 @@ class DiscordRichPresence {
   }
 
   setDiscordPresence = ({ state, details, endTimestamp }) => {
-    this.activityPid = this.discordClient.setActivity({
+    if(!this.pausedSince) {
+      this.pausedSince = moment().valueOf();
+    }
+    if(state === this.oldState) {
+      return;
+    }
+    this.oldState = state;
+    let activity = {
       state: state.charAt(0).toUpperCase() + state.slice(1),
       details,
-      endTimestamp: Math.round(endTimestamp),
       largeImageKey: 'plex_512',
       smallImageKey: `${state === "playing" ? 'play' : 'pause'}_512`,
       instance: true,
-    });
+    };
+    if(state === "playing") {
+      activity = { ...activity, endTimestamp: Math.round(endTimestamp) };
+      this.pausedSince = null;
+    } else {
+      activity = { ...activity, startTimestamp: Math.round(this.pausedSince) };
+    }
+    this.activityPid = this.discordClient.setActivity(activity);
   }
 
   start = () => {
-    this.discordClient.on('ready', () => {
-      setInterval(this.checkActivity, 10000);
-    });
-
+    this.discordClient.on('ready', () => this.checkActivity().then(() => setInterval(this.checkActivity, 5000)));
     this.discordClient.login({ clientId: discord.clientId });
   }
 }
