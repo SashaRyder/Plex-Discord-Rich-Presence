@@ -47,7 +47,7 @@ class DiscordRichPresence {
   }
 
   setDiscordPresence = ({ state, details, endTimestamp }) => {
-    if(!this.pausedSince) {
+    if(!this.pausedSince && state !== "playing") {
       this.pausedSince = moment().valueOf();
     }
     if(state === this.oldState) {
