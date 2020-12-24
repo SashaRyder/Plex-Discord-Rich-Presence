@@ -1,0 +1,10 @@
+{
+    "discord": {
+        "clientId": ""
+    },
+    "plex": {
+        "host": "",
+        "username": "",
+        "password": ""
+    }
+}
