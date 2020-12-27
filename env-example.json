@@ -2,9 +2,12 @@
     "discord": {
         "clientId": ""
     },
-    "plex": {
-        "host": "",
+    "mqtt": {
+        "host": "mqtt://127.0.0.1",
         "username": "",
         "password": ""
+    },
+    "settings": {
+        "excluded": []
     }
 }

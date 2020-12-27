@@ -9,7 +9,7 @@
   "dependencies": {
     "discord-rpc": "^3.1.4",
     "moment": "^2.29.1",
-    "plex-api": "^5.3.1"
+    "mqtt": "^4.2.6"
   },
   "scripts": {
     "start": "node index.js"

@@ -1,59 +1,39 @@
 const { Client } = require("discord-rpc");
-const PlexAPI = require("plex-api");
-const { plex, discord } = require("./env.json");
+const mqttjs = require('mqtt');
+const { mqtt, discord, settings } = require("./env.json");
 const moment = require("moment");
 
+
+/**
+ * Main class for Discord Rich Presence
+ * @class
+ * @public
+ */
 class DiscordRichPresence {
 
-  plexClient = null;
-  discordClient = null;
-  pausedSince = null;
-  oldState = "";
-
-  constructor() {
-    this.discordClient = new Client({ transport: 'ipc' });
-    this.plexClient = new PlexAPI({ hostname: plex.host, port: 443, https: true, username: plex.username, password: plex.password });
-  }
-  checkActivity = async () => {
-    const metadata = (await this.plexClient.query("/status/sessions")).MediaContainer.Metadata;
-    if (metadata && metadata.length > 0) {
-      const myMetadata = metadata.find((data) => data.User.title === plex.username);
-      if (myMetadata) {
-        if (myMetadata.librarySectionTitle === "TV Shows") {
-          const series = myMetadata.grandparentTitle;
-          const seasonNum = myMetadata.parentIndex.padStart("2", "0");
-          const episodeNum = myMetadata.index.padStart("2", "0");;
-          this.setDiscordPresence({
-            details: `${series} - S${seasonNum}E${episodeNum}`,
-            state: myMetadata.Player.state,
-            endTimestamp: moment().add({ milliseconds: myMetadata.duration - myMetadata.viewOffset }).valueOf()
-          });
-        }
-        else {
-          this.setDiscordPresence({
-            details: `${myMetadata.title} (${myMetadata.year})`,
-            state: myMetadata.Player.state,
-            endTimestamp: moment().add({ milliseconds: myMetadata.duration - myMetadata.viewOffset }).valueOf()
-          });
-        }
-      }
-      else {
-        this.discordClient.clearActivity();
-      }
-    }
-    else {
+  parseMessage = (_, payload) => {
+    const jsonPayload = JSON.parse(Buffer.from(payload).toString()).body;
+    const msg = jsonPayload.split("||");
+    const parsedPayload = {
+      state: msg[0],
+      remainingMins: msg[1] == 0 ? 1 : msg[1],
+      title: msg[2],
+      season: msg[3],
+      episode: msg[4],
+      folder: msg[5],
+    };
+    if (parsedPayload.state === "stopped" || settings.excluded.includes(parsedPayload.folder)) {
       this.discordClient.clearActivity();
+      return;
     }
+    const details = parsedPayload.folder === "Movies" ?
+      parsedPayload.title :
+      `${parsedPayload.title.substring(0, parsedPayload.title.indexOf('-')).trim()} S${parsedPayload.season}E${parsedPayload.episode}`;
+    const endTimestamp = moment().add({ minutes: parsedPayload.remainingMins }).valueOf();
+    this.setDiscordPresence({ state: parsedPayload.state, details, endTimestamp });
   }
 
   setDiscordPresence = ({ state, details, endTimestamp }) => {
-    if(!this.pausedSince && state !== "playing") {
-      this.pausedSince = moment().valueOf();
-    }
-    if(state === this.oldState) {
-      return;
-    }
-    this.oldState = state;
     let activity = {
       state: state.charAt(0).toUpperCase() + state.slice(1),
       details,
@@ -61,17 +41,19 @@ class DiscordRichPresence {
       smallImageKey: `${state === "playing" ? 'play' : 'pause'}_512`,
       instance: true,
     };
-    if(state === "playing") {
+    if (state === "playing") {
       activity = { ...activity, endTimestamp: Math.round(endTimestamp) };
-      this.pausedSince = null;
     } else {
-      activity = { ...activity, startTimestamp: Math.round(this.pausedSince) };
+      activity = { ...activity, startTimestamp: Math.round(moment().valueOf()) };
     }
     this.activityPid = this.discordClient.setActivity(activity);
   }
 
   start = () => {
-    this.discordClient.on('ready', () => this.checkActivity().then(() => setInterval(this.checkActivity, 5000)));
+    this.discordClient = new Client({ transport: 'ipc' });
+    this.mqttClient = mqttjs.connect(mqtt.host, { username: mqtt.username, password: mqtt.password });
+    this.mqttClient.on("connect", () => this.mqttClient.subscribe("discord"));
+    this.mqttClient.on("message", this.parseMessage);
     this.discordClient.login({ clientId: discord.clientId });
   }
 }
