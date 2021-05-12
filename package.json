@@ -7,6 +7,7 @@
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
+    "axios": "^0.21.1",
     "discord-rpc": "^3.1.4",
     "moment": "^2.29.1",
     "mqtt": "^4.2.6"

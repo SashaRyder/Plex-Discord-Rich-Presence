@@ -7,7 +7,12 @@
         "username": "",
         "password": ""
     },
+    "plex": {
+        "host": "",
+        "key": "",
+        "username": ""
+    },
     "settings": {
-        "excluded": []
+        "excluded": [""]
     }
 }

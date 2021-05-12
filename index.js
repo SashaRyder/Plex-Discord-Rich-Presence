@@ -1,6 +1,7 @@
 const { Client } = require("discord-rpc");
 const mqttjs = require('mqtt');
-const { mqtt, discord, settings } = require("./env.json");
+const { mqtt, discord, plex, settings } = require("./env.json");
+const { default: axios } = require("axios");
 const moment = require("moment");
 
 
@@ -16,11 +17,10 @@ class DiscordRichPresence {
     const msg = jsonPayload.split("||");
     const parsedPayload = {
       state: msg[0],
-      remainingMins: msg[1] == 0 ? 1 : msg[1],
-      title: msg[2],
-      season: msg[3],
-      episode: msg[4],
-      folder: msg[5],
+      title: msg[1],
+      season: msg[2],
+      episode: msg[3],
+      folder: msg[4],
     };
     if (parsedPayload.state === "stopped" || settings.excluded.includes(parsedPayload.folder)) {
       this.discordClient.clearActivity();
@@ -29,11 +29,10 @@ class DiscordRichPresence {
     const details = parsedPayload.folder === "Movies" ?
       parsedPayload.title :
       `${parsedPayload.title.substring(0, parsedPayload.title.indexOf('-')).trim()} S${parsedPayload.season}E${parsedPayload.episode}`;
-    const endTimestamp = moment().add({ minutes: parsedPayload.remainingMins }).valueOf();
-    this.setDiscordPresence({ state: parsedPayload.state, details, endTimestamp });
+    this.setDiscordPresence({ state: parsedPayload.state, details });
   }
 
-  setDiscordPresence = ({ state, details, endTimestamp }) => {
+  setDiscordPresence = async ({ state, details }) => {
     let activity = {
       state: state.charAt(0).toUpperCase() + state.slice(1),
       details,
@@ -42,7 +41,15 @@ class DiscordRichPresence {
       instance: true,
     };
     if (state === "playing") {
-      activity = { ...activity, endTimestamp: Math.round(endTimestamp) };
+      const {data: sessions} = await axios.get(`${plex.host}/status/sessions?X-Plex-Token=${plex.key}`, {
+        headers: {
+          "Accept": "application/json, text/plain, */*"
+        }
+      });
+      const userSession = sessions.MediaContainer.Metadata.find((session) => session.User.title === plex.username);
+      const endTimeMilliseconds = userSession.duration - userSession.viewOffset;
+      const endTimestamp = moment().add(endTimeMilliseconds, "milliseconds").subtract("1","second").valueOf();
+      activity = { ...activity, endTimestamp };
     } else {
       activity = { ...activity, startTimestamp: Math.round(moment().valueOf()) };
     }
@@ -53,6 +60,7 @@ class DiscordRichPresence {
     this.discordClient = new Client({ transport: 'ipc' });
     this.mqttClient = mqttjs.connect(mqtt.host, { username: mqtt.username, password: mqtt.password });
     this.mqttClient.on("connect", () => this.mqttClient.subscribe("discord"));
+    this.mqttClient.on("error", (e) => console.log(e.message));
     this.mqttClient.on("message", this.parseMessage);
     this.discordClient.login({ clientId: discord.clientId });
   }
